@@ -25,8 +25,6 @@ jobs:
         include:
           - runnertags: ubuntu-latest
             arch: amd64
-          - runnertags: [self-hosted, ARM64]
-            arch: arm64
 
     runs-on: ${{ matrix.runnertags }}
     steps:
@@ -56,9 +54,6 @@ jobs:
           docker tag localhost/postiz ghcr.io/miwaniza/postiz-app:${{ env.CONTAINERVER }}-${{ matrix.arch }}
           docker push ghcr.io/miwaniza/postiz-app:${{ env.CONTAINERVER }}-${{ matrix.arch }}
 
-          docker tag localhost/postiz-devcontainer ghcr.io/miwaniza/postiz-devcontainer:${{ env.CONTAINERVER }}-${{ matrix.arch }}
-          docker push ghcr.io/miwaniza/postiz-devcontainer:${{ env.CONTAINERVER }}-${{ matrix.arch }}
-
   build-container-manifest:
     needs: [build-containers, build-containers-common]
     runs-on: ubuntu-latest
@@ -76,14 +71,12 @@ jobs:
         run: |
           docker manifest create \
             ghcr.io/miwaniza/postiz-app:latest \
-            ghcr.io/miwaniza/postiz-app:${{ env.CONTAINERVER }}-arm64 \
             ghcr.io/miwaniza/postiz-app:${{ env.CONTAINERVER }}-amd64
 
           docker manifest push ghcr.io/miwaniza/postiz-app:latest
 
           docker manifest create \
             ghcr.io/miwaniza/postiz-devcontainer:latest \
-            ghcr.io/miwaniza/postiz-devcontainer:${{ env.CONTAINERVER }}-arm64 \
             ghcr.io/miwaniza/postiz-devcontainer:${{ env.CONTAINERVER }}-amd64
 
           docker manifest push ghcr.io/miwaniza/postiz-devcontainer:latest
