@@ -134,6 +134,47 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
       : {};
   }
 
+  private detectFormatting(text: string): 'HTML' | 'MarkdownV2' | undefined {
+    // HTML patterns
+    const htmlPattern = /<[^>]+>/;
+    
+    // MarkdownV2 patterns with matching opening/closing tags
+    const markdownV2Patterns = [
+      /\*[\s\S]*?\*/,           // Bold
+      /_[\s\S]*?_/,             // Italic
+      /~[\s\S]*?~/,             // Strikethrough
+      /`[\s\S]*?`/,             // Code
+      /\|\|[\s\S]*?\|\|/,       // Spoiler
+      /\[[\s\S]*?\]\([\s\S]*?\)/, // Links
+    ];
+
+    // Check if text contains valid HTML
+    if (htmlPattern.test(text)) {
+      return 'HTML';
+    }
+
+    // Check for MarkdownV2 formatting
+    const hasMarkdownV2 = markdownV2Patterns.some(pattern => pattern.test(text));
+    if (hasMarkdownV2) {
+      // Verify that special characters are escaped
+      const specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
+      const unescapedSpecialChar = specialChars.some(char => {
+        const regex = new RegExp(`(?<!\\\\)${char}`);
+        return regex.test(text);
+      });
+
+      // If special characters are not properly escaped, return undefined
+      // This prevents telegram API errors due to unescaped characters
+      if (unescapedSpecialChar) {
+        return undefined;
+      }
+      
+      return 'MarkdownV2';
+    }
+
+    return undefined;
+  }
+
   async post(
     id: string,
     accessToken: string,
@@ -145,6 +186,9 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
       let messageId: number | null = null;
       const mediaFiles = message.media || [];
       const text = message.message || '';
+      const parseMode = this.detectFormatting(text);
+      const messageOptions = parseMode ? { parse_mode: parseMode } : {};
+
       // check if media is local to modify url
       const processedMedia = mediaFiles.map((media) => {
         let mediaUrl = media.url;
@@ -175,31 +219,36 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
       });
       // if there's no media, bot sends a text message only
       if (processedMedia.length === 0) {
-        const response = await telegramBot.sendMessage(accessToken, text);
+        const response = await telegramBot.sendMessage(accessToken, text, messageOptions);
         messageId = response.message_id;
       }
       // if there's only one media, bot sends the media with the text message as caption
       else if (processedMedia.length === 1) {
         const media = processedMedia[0];
+        const options = {
+          caption: text,
+          ...messageOptions,
+        };
+        
         const response =
           media.type === 'video'
             ? await telegramBot.sendVideo(
                 accessToken,
                 media.media,
-                { caption: text },
+                options,
                 media.fileOptions
               )
             : media.type === 'photo'
             ? await telegramBot.sendPhoto(
                 accessToken,
                 media.media,
-                { caption: text },
+                options,
                 media.fileOptions
               )
             : await telegramBot.sendDocument(
                 accessToken,
                 media.media,
-                { caption: text },
+                options,
                 media.fileOptions
               );
         messageId = response.message_id;
@@ -212,6 +261,7 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
             type: m.type === 'document' ? 'document' : m.type, // Documents are not allowed in media groups
             media: m.media,
             caption: i === 0 && index === 0 ? text : undefined,
+            ...(i === 0 && index === 0 ? messageOptions : {}),
           }));
 
           const response = await telegramBot.sendMediaGroup(
